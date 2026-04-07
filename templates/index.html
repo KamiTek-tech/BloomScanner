@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTC Bloom Scanner</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body { background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; }
+        .card { background: #161b22; border: 1px solid #30363d; margin-bottom: 15px; }
+        .card-header { background: #21262d; border-bottom: 1px solid #30363d; font-weight: 600; }
+        .stat-val { font-size: 1.6rem; font-weight: bold; color: #2ea043; }
+        .stat-lbl { color: #8b949e; font-size: 0.8rem; text-transform: uppercase; }
+        .btn-start { background: #238636; border: none; color: white; }
+        .btn-start:hover { background: #2ea043; color: white; }
+        .btn-pause { background: #9e6a03; border: none; }
+        .btn-stop { background: #da3633; border: none; }
+        .console { background: #010409; color: #7ee787; font-family: 'Consolas', monospace; padding: 10px; border-radius: 5px; max-height: 250px; overflow-y: auto; font-size: 0.8rem; }
+        .hit { background: #161b22; padding: 8px; margin: 5px 0; border-radius: 4px; border-left: 3px solid #2ea043; font-size: 0.85rem; }
+        .hit.found { border-left-color: #f85149; background: #1f1010; }
+        .form-control, .form-select { background: #0d1117; border-color: #30363d; color: #c9d1d9; }
+        .form-control:focus, .form-select:focus { background: #0d1117; border-color: #2ea043; color: #c9d1d9; box-shadow: 0 0 0 0.25rem rgba(46,160,67,0.25); }
+        .balance-panel { border-left: 3px solid #f85149 !important; }
+        .telegram-section { background: #1c1505; border: 1px solid #9e6a03; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+        .section-label { color: #8b949e; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 4px; }
+        .disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-dark" style="background: #161b22; border-bottom: 1px solid #30363d;">
+    <div class="container"><span class="navbar-brand mb-0 h1"><i class="bi bi-cpu"></i> BTC Bloom Scanner</span>
+        <span id="conn-status"><span class="badge bg-secondary">Disconnected</span></span></div>
+</nav>
+<div class="container py-3">
+    <!-- Статистика -->
+    <div class="row mb-3">
+        <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body p-2">
+            <div class="stat-val" id="s-gen">0</div><div class="stat-lbl">Generated</div></div></div></div>
+        <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body p-2">
+            <div class="stat-val" id="s-hits">0</div><div class="stat-lbl">Hits</div></div></div></div>
+        <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body p-2">
+            <div class="stat-val" id="s-speed">0</div><div class="stat-lbl">Addr/sec</div></div></div></div>
+        <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body p-2">
+            <div class="stat-val" id="s-api">0</div><div class="stat-lbl">API Checked</div></div></div></div>
+    </div>
+
+    <!-- Панель Found with Balance -->
+    <div class="card mb-3 balance-panel">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-trophy"></i> Found with Balance</span>
+            <span class="badge bg-danger" id="balance-count">0</span>
+        </div>
+        <div class="card-body p-2" id="balance-list" style="max-height: 120px; overflow-y: auto;">
+            <div class="text-muted text-center small">No wallets with balance yet</div>
+        </div>
+    </div>
+
+    <!-- Конфигурация -->
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-gear"></i> Configuration</div>
+        <div class="card-body">
+            <!-- Telegram Settings -->
+            <div class="telegram-section mb-3">
+                <div class="section-label"><i class="bi bi-telegram"></i> Telegram Notifications</div>
+                <div class="row g-2">
+                    <div class="col-md-5">
+                        <input type="text" class="form-control form-control-sm" id="tg-token" placeholder="Bot Token">
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm" id="tg-chat" placeholder="Chat ID">
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch mt-1">
+                            <input class="form-check-input" type="checkbox" id="tg-enabled">
+                            <label class="form-check-label small" for="tg-enabled">Enable</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Config -->
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small">Method</label>
+                    <select class="form-select form-select-sm" id="cfg-method">
+                        <option value="pubkey_hash160">pubkey_hash160</option>
+                        <option value="address_sha256">address_sha256</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Threads</label>
+                    <input type="number" class="form-control form-control-sm" id="cfg-threads" value="6" min="1" max="32">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Target</label>
+                    <input type="number" class="form-control form-control-sm" id="cfg-total" value="100000">
+                </div>
+                <div class="col-md-6 d-flex gap-2">
+                    <button class="btn btn-start flex-grow-1 btn-sm" id="btn-start" onclick="startScan()"><i class="bi bi-play-fill"></i> Start</button>
+                    <button class="btn btn-pause btn-sm px-3" id="btn-pause" onclick="pauseScan()" disabled><i class="bi bi-pause-fill"></i></button>
+                    <button class="btn btn-stop btn-sm px-3" id="btn-stop" onclick="stopScan()" disabled><i class="bi bi-stop-fill"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Графики и логи -->
+    <div class="row">
+        <div class="col-md-6"><div class="card"><div class="card-header"><i class="bi bi-graph-up"></i> Speed</div>
+            <div class="card-body p-2"><canvas id="chart" height="150"></canvas></div></div></div>
+        <div class="col-md-6"><div class="card"><div class="card-header"><i class="bi bi-terminal"></i> Console</div>
+            <div class="card-body p-2"><div class="console" id="console"></div></div></div></div>
+    </div>
+
+    <!-- Recent Hits -->
+    <div class="card mt-3"><div class="card-header"><i class="bi bi-crosshair"></i> Recent Hits</div>
+        <div class="card-body p-2" id="hits-list" style="max-height: 150px; overflow-y: auto;"><div class="text-muted text-center small">No hits yet</div></div></div>
+</div>
+<script src="static/js/app.js"></script>
+</body>
+</html>
