@@ -1,6 +1,8 @@
+// ==================== GLOBAL VARIABLES ====================
 const socket = io();
 let chart, speedData = [], speedLabels = [];
 
+// ==================== CHART INITIALIZATION ====================
 function initChart() {
     const ctx = document.getElementById('chart').getContext('2d');
     chart = new Chart(ctx, {
@@ -25,20 +27,21 @@ function initChart() {
             animation: { duration: 0 },
             plugins: { legend: { display: false } },
             scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: '#21262d' },
-                    ticks: { color: '#8b949e' }
+                y: { 
+                    beginAtZero: true, 
+                    grid: { color: '#21262d' }, 
+                    ticks: { color: '#8b949e' } 
                 },
-                x: {
-                    grid: { color: '#21262d' },
-                    ticks: { color: '#8b949e', maxTicksLimit: 8, maxRotation: 45, minRotation: 45 }
+                x: { 
+                    grid: { color: '#21262d' }, 
+                    ticks: { color: '#8b949e', maxTicksLimit: 8, maxRotation: 45, minRotation: 45 } 
                 }
             }
         }
     });
 }
 
+// ==================== UI HELPERS ====================
 function updateUI(state) {
     document.getElementById('s-gen').textContent = (state.total_generated || 0).toLocaleString();
     document.getElementById('s-hits').textContent = (state.total_hits || 0).toLocaleString();
@@ -52,25 +55,6 @@ function updateUI(state) {
         setButtons('stopped');
     }
 }
-
-function startScan() {
-    const config = {
-        method: document.getElementById('cfg-method').value,
-        threads: parseInt(document.getElementById('cfg-threads').value),
-        total: parseInt(document.getElementById('cfg-total').value),
-        api: true,
-        telegram: {
-            enabled: document.getElementById('tg-enabled').checked,
-            token: document.getElementById('tg-token').value.trim(),
-            chat_id: document.getElementById('tg-chat').value.trim()
-        }
-    };
-    socket.emit('start_scanning', config);
-    setButtons('running');
-}
-
-function pauseScan() { socket.emit('pause_scanning'); }
-function stopScan() { socket.emit('stop_scanning'); setButtons('stopped'); }
 
 function setButtons(state) {
     const startBtn = document.getElementById('btn-start');
@@ -95,11 +79,33 @@ function setButtons(state) {
     }
 }
 
+// ==================== SCANNER CONTROLS ====================
+function startScan() {
+    const config = {
+        method: document.getElementById('cfg-method').value,
+        threads: parseInt(document.getElementById('cfg-threads').value),
+        total: parseInt(document.getElementById('cfg-total').value),
+        api: true,
+        telegram: {
+            enabled: document.getElementById('tg-enabled').checked,
+            token: document.getElementById('tg-token').value.trim(),
+            chat_id: document.getElementById('tg-chat').value.trim()
+        }
+    };
+    socket.emit('start_scanning', config);
+    setButtons('running');
+}
+
+function pauseScan() { socket.emit('pause_scanning'); }
+function stopScan() { socket.emit('stop_scanning'); setButtons('stopped'); }
+
+// ==================== SOCKET LISTENERS ====================
 socket.on('connect', () => {
-    document.getElementById('conn-status').innerHTML = '<span class="badge bg-success">Connected</span>';
+    document.getElementById('conn-status-text').textContent = 'Connected';
 });
+
 socket.on('disconnect', () => {
-    document.getElementById('conn-status').innerHTML = '<span class="badge bg-danger">Disconnected</span>';
+    document.getElementById('conn-status-text').textContent = 'Disconnected';
 });
 
 socket.on('initial_state', (state) => {
@@ -117,7 +123,7 @@ socket.on('stats_update', d => {
     speedLabels.push(new Date().toLocaleTimeString());
     speedData.push(d.speed);
     
-    if (chart) { chart.update('none'); }
+    if (chart) chart.update('none');
 });
 
 socket.on('new_hit', h => {
@@ -135,10 +141,7 @@ socket.on('new_balance', h => {
     const count = parseInt(document.getElementById('balance-count').textContent) + 1;
     document.getElementById('balance-count').textContent = count;
     const div = document.createElement('div'); div.className = 'hit found';
-    div.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-        <div><code>${h.address}</code><br><small class="text-muted">${h.btc} BTC</small></div>
-        <span class="badge bg-danger">${h.btc} BTC</span>
-    </div>`;
+    div.innerHTML = `<div class="d-flex justify-content-between align-items-center"><div><code>${h.address}</code><br><small class="text-muted">${h.btc} BTC</small></div><span class="badge bg-danger">${h.btc} BTC</span></div>`;
     c.insertBefore(div, c.firstChild);
 });
 
@@ -157,6 +160,63 @@ socket.on('scan_complete', d => {
 socket.on('error', e => { alert('❌ ' + e.message); setButtons('stopped'); });
 socket.on('state_changed', s => { updateUI(s); });
 
+// ==================== RECOVERY LOGIC ====================
+function startRecovery(mode) {
+    const resultsDiv = document.getElementById('rec-results');
+    resultsDiv.innerHTML = '<div class="text-warning">🔄 Scanning...</div>';
+    document.getElementById('rec-status').textContent = '🔄 Working...';
+    document.getElementById('rec-progress').style.width = '0%';
+    
+    let config = { 
+        mode,
+        telegram: { 
+            enabled: document.getElementById('tg-enabled').checked, 
+            token: document.getElementById('tg-token').value.trim(), 
+            chat_id: document.getElementById('tg-chat').value.trim() 
+        }
+    };
+    
+    if (mode === 'missing') {
+        const input = document.getElementById('rec-missing-phrase').value.trim().split(/\s+/);
+        config.words = input.join(' ');
+        config.missing_indices = input.map((w, i) => w === '?' ? i : -1).filter(i => i !== -1);
+        if (config.missing_indices.length === 0 || config.missing_indices.length > 2) { 
+            alert('Error: Mark 1 or 2 words with ?'); return; 
+        }
+    } else if (mode === 'shuffled') {
+        config.words = document.getElementById('rec-shuffled-phrase').value.trim();
+        if (config.words.split(/\s+/).length > 9) { 
+            alert('Error: Max 9 words for shuffled mode!'); return; 
+        }
+    } else if (mode === 'typo') {
+        config.words = document.getElementById('rec-typo-phrase').value.trim();
+    }
+    
+    socket.emit('start_recovery', config);
+}
+
+socket.on('recovery_progress', d => {
+    document.getElementById('rec-status').textContent = `🔄 ${d.percent.toFixed(2)}%`;
+    document.getElementById('rec-count').textContent = `${d.current.toLocaleString()} / ${d.total.toLocaleString()}`;
+    document.getElementById('rec-progress').style.width = `${d.percent}%`;
+});
+
+socket.on('recovery_found', h => {
+    const div = document.createElement('div');
+    const balClass = h.balance > 0 ? 'alert-danger' : 'alert-success';
+    const balIcon = h.balance > 0 ? '💰' : '🟢';
+    div.className = `alert ${balClass} py-2 mb-2 fade show`;
+    div.innerHTML = `<strong>${balIcon} FOUND!</strong><br><code>${h.phrase}</code><br><small>Addr: ${h.address} | Bal: ${h.balance} BTC</small>`;
+    document.getElementById('rec-results').prepend(div);
+});
+
+socket.on('recovery_complete', () => {
+    document.getElementById('rec-status').textContent = '✅ Done';
+    document.getElementById('rec-progress').style.width = '100%';
+    document.getElementById('rec-progress').classList.remove('progress-bar-animated');
+});
+
+// ==================== INIT ====================
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initChart);
 } else {
