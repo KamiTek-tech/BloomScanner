@@ -102,10 +102,14 @@ function stopScan() { socket.emit('stop_scanning'); setButtons('stopped'); }
 // ==================== SOCKET LISTENERS ====================
 socket.on('connect', () => {
     document.getElementById('conn-status-text').textContent = 'Connected';
+    // 🔥 Убираем класс disconnected → переход к зелёному
+    document.querySelector('.gradient-badge-container').classList.remove('status-disconnected');
 });
 
 socket.on('disconnect', () => {
     document.getElementById('conn-status-text').textContent = 'Disconnected';
+    // 🔥 Добавляем класс disconnected → переход к красному
+    document.querySelector('.gradient-badge-container').classList.add('status-disconnected');
 });
 
 socket.on('initial_state', (state) => {

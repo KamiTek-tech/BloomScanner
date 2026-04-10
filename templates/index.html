@@ -44,6 +44,13 @@
             box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
             animation: gradientShift 8s ease infinite;
             background-size: 200% 200%;
+            transition: background 0.6s ease, box-shadow 0.6s ease;
+        }
+        
+        /* 🔴 Disconnected State */
+        .gradient-badge-container.status-disconnected {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #ef4444 100%);
+            box-shadow: 0 2px 12px rgba(239, 68, 68, 0.4);
         }
         
         .gradient-text-start {
@@ -78,10 +85,10 @@
         <span class="navbar-brand mb-0 h1"><i class="bi bi-cpu"></i> BTC Bloom Scanner Pro</span>
         <div class="d-flex align-items-center">
             <!-- Gradient Badge -->
-            <div class="gradient-badge-container">
+            <div class="gradient-badge-container status-disconnected" id="gradient-badge">
                 <span class="gradient-text-start">Created at kamiteʞ</span>
                 <span class="gradient-divider">|</span>
-                <span class="gradient-text-end" id="conn-status-text">Connected</span>
+                <span class="gradient-text-end" id="conn-status-text">Disconnected</span>
             </div>
         </div>
     </div>
